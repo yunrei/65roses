@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CFTR Variant Information</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+    <link href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css" rel="stylesheet">
+    <style>
+        .symptom-card, .treatment-card {
+            transition: transform 0.2s;
+        }
+        .symptom-card:hover, .treatment-card:hover {
+            transform: translateY(-5px);
+        }
+        .select2-container {
+            width: 100% !important;
+        }
+        .ui-autocomplete {
+            max-height: 200px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            z-index: 1000;
+        }
+        .ui-menu-item {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        .ui-menu-item:hover {
+            background-color: #f8f9fa;
+        }
+        .loading-spinner {
+            display: none;
+            margin-left: 10px;
+        }
+        .variant-suggestion {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+        }
+        .variant-id {
+            font-weight: bold;
+        }
+        .variant-classification {
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">CFTR Variant Information</a>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Search by Variant</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="variantSearchForm">
+                            <div class="mb-3">
+                                <label for="variantId" class="form-label">Enter your CFTR variant ID</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="variantId" 
+                                           placeholder="Start typing to search variants..."
+                                           autocomplete="off">
+                                    <div class="spinner-border text-primary loading-spinner" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted">Type to search for variants (e.g., 7-117715930-G-A)</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Search</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Search by Symptoms</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="symptomSearchForm">
+                            <div class="mb-3">
+                                <label for="symptoms" class="form-label">Select your symptoms</label>
+                                <select class="form-control" id="symptoms" multiple="multiple">
+                                </select>
+                                <small class="form-text text-muted">Search and select multiple symptoms</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Find Matching Variants</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="results" class="mt-4">
+            <div id="variantResults" class="card mb-4 d-none">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Variant Information</h5>
+                </div>
+                <div class="card-body">
+                    <div id="variantInfo"></div>
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <h6>Associated Symptoms</h6>
+                            <div id="symptomList" class="list-group"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Recommended Treatments</h6>
+                            <div id="treatmentList" class="list-group"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="symptomResults" class="card mb-4 d-none">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Matching Variants</h5>
+                </div>
+                <div class="card-body">
+                    <div id="matchingVariants"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Initialize variant autocomplete
+            $("#variantId").autocomplete({
+                source: "/variant_suggestions",
+                minLength: 2,
+                select: function(event, ui) {
+                    $(this).val(ui.item.value);
+                    return false;
+                },
+                search: function() {
+                    $('.loading-spinner').show();
+                },
+                response: function() {
+                    $('.loading-spinner').hide();
+                }
+            }).autocomplete("instance")._renderItem = function(ul, item) {
+                return $("<li>")
+                    .append(`<div class='variant-suggestion'>
+                        <span class='variant-id'>${item.value}</span>
+                        <span class='variant-classification'>${item.label.split('(')[1].slice(0, -1)}</span>
+                    </div>`)
+                    .appendTo(ul);
+            };
+
+            // Initialize Select2 for symptoms with categories
+            $.get('/get_symptoms', function(symptoms) {
+                const groupedSymptoms = symptoms.reduce((acc, s) => {
+                    if (!acc[s.category]) {
+                        acc[s.category] = [];
+                    }
+                    acc[s.category].push({
+                        id: s.name,
+                        text: `${s.name} (${s.variant_count} variants)`,
+                        description: s.description
+                    });
+                    return acc;
+                }, {});
+
+                const data = Object.entries(groupedSymptoms).map(([category, items]) => ({
+                    text: category,
+                    children: items
+                }));
+
+                $('#symptoms').select2({
+                    data: data,
+                    placeholder: 'Search and select symptoms',
+                    templateResult: formatSymptom
+                });
+            });
+
+            function formatSymptom(symptom) {
+                if (!symptom.id) return symptom.text;
+                return $(`
+                    <div>
+                        <strong>${symptom.text}</strong>
+                        ${symptom.description ? `<br><small>${symptom.description}</small>` : ''}
+                    </div>
+                `);
+            }
+
+            // Handle variant search
+            $('#variantSearchForm').submit(function(e) {
+                e.preventDefault();
+                $.post('/search_variant', {
+                    variant_id: $('#variantId').val()
+                }, function(response) {
+                    if (response.found) {
+                        $('#variantResults').removeClass('d-none');
+                        $('#variantInfo').html(`
+                            <h6>Variant ID: ${response.variant.gnomad_id}</h6>
+                            <p>Clinical Classification: ${response.variant.clinvar_classification || 'Not available'}</p>
+                        `);
+                        
+                        $('#symptomList').html(response.symptoms.map(s => 
+                            `<div class="list-group-item">${s}</div>`
+                        ).join(''));
+                        
+                        $('#treatmentList').html(response.treatments.map(t => 
+                            `<div class="list-group-item">${t}</div>`
+                        ).join(''));
+                    } else {
+                        alert('Variant not found in database');
+                    }
+                });
+            });
+
+            // Handle symptom search
+            $('#symptomSearchForm').submit(function(e) {
+                e.preventDefault();
+                const selectedSymptoms = $('#symptoms').val();
+                if (!selectedSymptoms || selectedSymptoms.length === 0) {
+                    alert('Please select at least one symptom');
+                    return;
+                }
+
+                $.post('/search_by_symptoms', {
+                    'symptoms[]': selectedSymptoms
+                }, function(variants) {
+                    $('#symptomResults').removeClass('d-none');
+                    if (variants.length === 0) {
+                        $('#matchingVariants').html('<p>No matching variants found</p>');
+                    } else {
+                        $('#matchingVariants').html(variants.map(v => `
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6>Variant ID: ${v.gnomad_id}</h6>
+                                    <p>Clinical Classification: ${v.clinvar_classification || 'Not available'}</p>
+                                    <p>Matching Symptoms: ${v.matching_symptoms}</p>
+                                    <p>Match Score: ${((v.symptom_match_count / selectedSymptoms.length) * 100).toFixed(1)}%</p>
+                                </div>
+                            </div>
+                        `).join(''));
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html> 
