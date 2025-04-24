@@ -21,9 +21,9 @@ raw_data = pd.read_csv('cftr.csv', dtype = str)
 raw_data = raw_data.drop(columns=['gnomAD ID'])
 #raw_data = raw_data.dropna()
 
-if 'rsID' in raw_data.columns:
-    # Remove the 'rs' prefix from the rsID column
-    raw_data['rsID'] = raw_data['rsID'].str.replace(r'^rs', '', regex=True)
+# if 'rsID' in raw_data.columns:
+#     # Remove the 'rs' prefix from the rsID column
+#     raw_data['rsID'] = raw_data['rsID'].str.replace(r'^rs', '', regex=True)
 
 # Convert all columns to string and hash them
 data = raw_data.applymap(stable_hash) #np.empty((len(raw_data), len(raw_data.columns)))
